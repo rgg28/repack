@@ -19,7 +19,7 @@ jobs:
         # 2. Inyectar módulo de bots autónomos antes de compilar
     - name: Inyectar Modulo Playerbots
       run: |
-        git clone --recursive https://github.com src/server/modules/mod-playerbots
+        git clone --recursive https://github.com/src/server/modules/mod-playerbots
 
     # 3. Preparar herramientas de compilación de Windows
     - name: Configurar MSBuild y Visual Studio
