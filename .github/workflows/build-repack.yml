@@ -16,11 +16,9 @@ jobs:
       with:
         submodules: recursive
 
-    # 2. Inyectar módulo de bots autónomos antes de compilar
+        # 2. Inyectar módulo de bots autónomos antes de compilar
     - name: Inyectar Modulo Playerbots
-      shell: bash
       run: |
-        cd src/server/modules
         git clone --recursive https://github.com src/server/modules/mod-playerbots
 
     # 3. Preparar herramientas de compilación de Windows
