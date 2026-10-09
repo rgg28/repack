@@ -10,16 +10,15 @@ jobs:
     runs-on: windows-2022
 
     steps:
-    # 1. Descargar el código fuente
-    - name: Descargar Codigo Fuente
-      uses: actions/checkout@v4
-      with:
-        submodules: recursive
+    # 1. Clonar el repositorio oficial de WoW Forever directamente (Ya que tu repo está vacío)
+    - name: Descargar Codigo Fuente de WoW Forever
+      run: |
+        git clone --recursive --branch forever https://github.com .
 
-        # 2. Inyectar módulo de bots autónomos antes de compilar
+    # 2. Inyectar módulo de bots autónomos usando la ruta directa
     - name: Inyectar Modulo Playerbots
       run: |
-        git clone --recursive https://github.com/src/server/modules/mod-playerbots
+        git clone --recursive https://github.com src/server/modules/mod-playerbots
 
     # 3. Preparar herramientas de compilación de Windows
     - name: Configurar MSBuild y Visual Studio
@@ -64,7 +63,7 @@ jobs:
 
         copy build\bin\Release\mapextractor.exe repack-final\
         copy build\bin\Release\vmap4extractor.exe repack-final\
-        copy build/bin/Release/vmap4assembler.exe repack-final\
+        copy build\bin\Release\vmap4assembler.exe repack-final\
         copy build\bin\Release\mmaps_generator.exe repack-final\
 
     # 6. Preparar MariaDB Portable e inyectar esquemas de BD preconfigurados
