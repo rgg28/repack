@@ -21,7 +21,7 @@ jobs:
       shell: bash
       run: |
         cd src/server/modules
-        git clone --recursive https://github.com
+        git clone --recursive https://github.com src/server/modules/mod-playerbots
 
     # 3. Preparar herramientas de compilación de Windows
     - name: Configurar MSBuild y Visual Studio
