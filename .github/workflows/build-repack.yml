@@ -1,0 +1,135 @@
+name: WoW Forever Repack Portatil Completo
+
+on:
+  push:
+    branches: [ "forever", "main" ]
+  workflow_dispatch:
+
+jobs:
+  build-repack:
+    runs-on: windows-2022
+
+    steps:
+    # 1. Descargar el código fuente
+    - name: Descargar Código Fuente
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    # 2. Inyectar módulo de bots autónomos antes de compilar
+    - name: Inyectar Modulo Playerbots
+      shell: bash
+      run: |
+        cd src/server/modules
+        git clone --recursive https://github.com
+
+    # 3. Preparar herramientas de compilación de Windows
+    - name: Configurar MSBuild y Visual Studio
+      uses: microsoft/setup-msbuild@v2
+
+    - name: Instalar Dependencias del Sistema
+      run: |
+        choco install openssl --version=1.1.1.2100 -y --no-progress
+        choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' -y --no-progress
+        choco install mariadb --no-start -y --no-progress
+
+    # 4. Configurar y compilar binarios
+    - name: Configurar Proyecto con CMake
+      run: |
+        mkdir build
+        cd build
+        cmake .. -G "Visual Studio 17 2022" -A x64 -DTOOLS=1 -DSCRIPTS=1 -DOPENSSL_ROOT_DIR="C:/Program Files/OpenSSL-Win64"
+
+    - name: Compilar Core (Release)
+      run: |
+        cd build
+        cmake --build . --config Release --target ALL_BUILD -- /m
+
+    # 5. Crear la arquitectura del Repack "Listo para Jugar"
+    - name: Estructurar Repack Portatil
+      run: |
+        mkdir repack-final
+        mkdir repack-final/Core
+        mkdir repack-final/Database
+        
+        # Copiar Binarios y DLLs del Servidor
+        copy build/bin/Release/*.exe repack-final/Core/
+        copy "C:/Program Files/OpenSSL-Win64/*.dll" repack-final/Core/
+        
+        # Generar archivos de configuración listos (.conf)
+        copy build/bin/Release/worldserver.conf.dist repack-final/Core/worldserver.conf
+        copy build/bin/Release/authserver.conf.dist repack-final/Core/authserver.conf
+        
+        # Configurar y copiar playerbots.conf con bots autónomos activos por defecto
+        if exist "build/bin/Release/playerbots.conf.dist" (
+          copy build/bin/Release/playerbots.conf.dist repack-final/Core/playerbots.conf
+        ) else (
+          copy src/server/modules/mod-playerbots/playerbots.conf.dist repack-final/Core/playerbots.conf
+        )
+
+        # Copiar herramientas de extracción de mapas
+        copy build/bin/Release/mapextractor.exe repack-final/
+        copy build/bin/Release/vmap4extractor.exe repack-final/
+        copy build/bin/Release/vmap4assembler.exe repack-final/
+        copy build/bin/Release/mmaps_generator.exe repack-final/
+
+    # 6. Preparar MariaDB Portable e inyectar esquemas de BD preconfigurados
+    - name: Configurar Base de Datos Portable e Inyectar Estructuras
+      run: |
+        # Copiar archivos base del motor MariaDB instalado temporalmente por Chocolatey
+        xcopy "C:\Program Files\MariaDB 11.4\bin" repack-final\Database\bin\ /E /I /H /Y
+        xcopy "C:\Program Files\MariaDB 11.4\data" repack-final\Database\data\ /E /I /H /Y
+        
+        # Iniciar servicio temporal en segundo plano para poblar las bases de datos de WoW
+        Start-Process -FilePath "repack-final\Database\bin\mysqld.exe" -ArgumentList "--standalone --port=3306" -NoNewWindow
+        Start-Sleep -Seconds 10
+        
+        # Crear estructuras iniciales usando las herramientas de línea de comandos de MariaDB
+        & repack-final\Database\bin\mysql.exe -u root -e "CREATE DATABASE auth; CREATE DATABASE characters; CREATE DATABASE world;"
+        
+        # Inyectar archivos SQL base provistos por TrinityCore/WoW Forever
+        if (Test-Path "sql/base/auth_database.sql") { & repack-final\Database\bin\mysql.exe -u root auth < sql/base/auth_database.sql }
+        if (Test-Path "sql/base/characters_database.sql") { & repack-final\Database\bin\mysql.exe -u root characters < sql/base/characters_database.sql }
+        
+        # Inyectar esquemas y tablas dedicadas del módulo de Playerbots
+        if (Test-Path "src/server/modules/mod-playerbots/sql/characters/") {
+            cat src/server/modules/mod-playerbots/sql/characters/*.sql | & repack-final\Database\bin\mysql.exe -u root characters
+        }
+        if (Test-Path "src/server/modules/mod-playerbots/sql/world/") {
+            cat src/server/modules/mod-playerbots/sql/world/*.sql | & repack-final\Database\bin\mysql.exe -u root world
+        }
+
+        # Apagar servidor SQL temporal seguro
+        & repack-final\Database\bin\mysqladmin.exe -u root shutdown
+
+    # 7. Crear los scripts automatizados de Arranque (.bat) para el usuario final
+    - name: Crear Scripts de Inicio Facil
+      run: |
+        # Script para iniciar la base de datos portable
+        @"
+        @echo off
+        title Base de Datos - WoW Forever Repack
+        echo Iniciando Base de Datos local en puerto 3306...
+        cd Database\bin
+        mysqld.exe --standalone --port=3306
+        pause
+        "@ | Out-File -FilePath repack-final\1_Iniciar_Base_De_Datos.bat -Encoding ASCII
+
+        # Script para arrancar los servidores de WoW
+        @"
+        @echo off
+        title Servidores - WoW Forever Repack
+        echo Iniciando Servidor de Autenticacion...
+        start cd Core && authserver.exe
+        echo Iniciando Servidor del Mundo (Worldserver)...
+        cd Core && worldserver.exe
+        pause
+        "@ | Out-File -FilePath repack-final\2_Iniciar_Servidores.bat -Encoding ASCII
+
+    # 8. Subir el Repack empaquetado y autocontenido
+    - name: Subir Repack "Listo para Jugar"
+      uses: actions/artifacts@v4
+      with:
+        name: WoW-Forever-Repack-PORTABLE-Listo
+        path: repack-final/
+        retention-days: 7
